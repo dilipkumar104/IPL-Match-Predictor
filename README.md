@@ -1,154 +1,284 @@
-# IPL Match Outcome Predictor
+# 🏏 IPL Match Outcome Predictor
 
-## 🚀 Problem
-Predict IPL match outcomes using historical match data.
+> **Predict who wins an IPL match** before it starts — using 17 seasons of historical data and a production-grade Scikit-Learn pipeline.
 
-## ❗ Key Insight
-Initial approach treated this as a multi-class classification problem (predicting exact winner), which resulted in low accuracy (~43%).
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python)](https://python.org)
+[![Scikit-Learn](https://img.shields.io/badge/Scikit--Learn-1.4%2B-orange?logo=scikit-learn)](https://scikit-learn.org)
+[![Dataset](https://img.shields.io/badge/Dataset-IPL%202008--2024-brightgreen)](https://www.kaggle.com/datasets/patrickb1912/ipl-complete-dataset-20082020)
+[![License](https://img.shields.io/badge/License-KMIT-lightgrey)](LICENSE)
 
-Reframing the problem as a binary classification task:
-"Will team1 win?" significantly improved performance to ~81%.
+---
 
-## 🧠 Approach
+## 📋 Table of Contents
+- [Problem Statement](#-problem-statement)
+- [Key Insight — Why Binary Classification?](#-key-insight--why-binary-classification)
+- [Dataset](#-dataset)
+- [Data Quality Findings](#-data-quality-findings)
+- [Feature Engineering](#-feature-engineering)
+- [Model Architecture](#-model-architecture)
+- [Results](#-results)
+- [Project Structure](#-project-structure)
+- [Installation & Execution](#-installation--execution)
+- [Sample Predictions](#-sample-predictions)
+- [Technical Stack](#-technical-stack)
+- [Key Insights](#-key-insights)
+- [Future Work](#-future-work)
 
-### Data Processing
-- Cleaned dataset and handled missing values
-- Selected relevant features (teams, toss, venue)
+---
 
-### Feature Engineering
-- Created team strength features based on historical wins
-- Encoded toss outcome and decision
+## 🎯 Problem Statement
 
-### Modeling
-- Logistic Regression (baseline)
-- Random Forest (non-linear model)
+Given two IPL teams and match conditions (venue, toss outcome, toss decision), **predict which team is more likely to win** the match.
 
-### Evaluation
-- Multi-class accuracy: ~43%
-- Binary classification accuracy: ~81%
+This is framed as a **binary classification** problem: given that `team1` is listed first, does `team1` win? (Target = 1).
 
-## 📊 Key Findings
-- Team strength is the most influential factor (~60% importance)
-- Toss-related features contribute minimally (~5%)
-- Problem formulation had the biggest impact on performance
+---
 
-## 🛠 Tech Stack
-Python, Pandas, NumPy, Scikit-learn
+## 💡 Key Insight — Why Binary Classification?
 
-## 🔮 Future Improvements
-- Add player-level data
-- Include recent form (rolling averages)
-- Try advanced models (XGBoost)
+| Formulation | Classes | Test Accuracy |
+|---|---|---|
+| Multi-class: "Predict exact winner" | 15–19 unique teams | ~43% |
+| **Binary: "Will team1 win?"** | **2 (win/loss)** | **~80%** |
 
+Framing the problem as binary classification:
+1. Eliminates sparsity — many teams play only a few dozen matches
+2. Results in near-perfect class balance (~51% team1 wins, due to random name ordering in the CSV)
+3. Allows Logistic Regression to shine, since the decision boundary is nearly linear in feature space
 
-# IPL Match Outcome Predictor
+---
 
-> Predict IPL match outcomes using historical data and machine learning.
+## 📊 Dataset
 
-## Problem Statement
+| Property | Value |
+|---|---|
+| **Source** | [Kaggle — IPL Complete Dataset (2008–2024)](https://www.kaggle.com/datasets/patrickb1912/ipl-complete-dataset-20082020) |
+| **File** | `data/matches.csv` |
+| **Raw rows** | 1,095 matches |
+| **Clean rows** | 1,076 (after removing ties/no-results) |
+| **Seasons** | 17 (2007/08 – 2024) |
+| **Teams** | 15 unique (after name standardisation) |
+| **Columns** | 20 original → 10 engineered features |
 
-Given two IPL teams and match conditions (venue, toss), predict which team is more likely to win.
+---
 
-## Dataset
+## 🔍 Data Quality Findings
 
-- **Source**: [Kaggle - IPL Complete Dataset (2008-2024)](https://www.kaggle.com/datasets/patrickb1912/ipl-complete-dataset-20082020)
-- **Size**: 1,090 matches across 17 IPL seasons
-- **Features**: 20 columns including teams, venue, toss, result, etc.
+Six data quality issues were identified and resolved:
 
-## Approach
+| # | Issue | Impact | Fix Applied |
+|---|---|---|---|
+| 1 | **Team name inconsistencies** — "Delhi Daredevils", "Kings XI Punjab", "Royal Challengers Bengaluru", "Rising Pune Supergiants" appear alongside their renamed equivalents | Creates duplicate entities, inflates team count | Unified via `TEAM_NAME_MAP` dictionary |
+| 2 | **No-result / Tied matches** — 5 NaN winners + 14 ties + 5 "no result" rows | No ground-truth label for these rows | Dropped (kept only `result == 'runs'` or `'wickets'`) |
+| 3 | **51 missing `city` values** | Incomplete metadata | Filled with `"Unknown"` |
+| 4 | **19 missing `result_margin` values** | Cannot use this as a feature | Filled with `0` |
+| 5 | **Heterogeneous `season` format** — some seasons are `"2007/08"`, others are `"2009"` | Cannot sort or use ordinally | Extracted first year: `"2007/08"` → `2007` |
+| 6 | **Non-predictive columns** — `id`, `method`, `umpire1/2`, `player_of_match`, `target_runs/overs`, `super_over` | Add noise, no signal | Dropped before modelling |
 
-### 1. Data Cleaning
-- Standardized team names (e.g., "Delhi Daredevils" → "Delhi Capitals")
-- Handled missing values (dropped no-result matches, filled city/player NaNs)
-- Removed non-predictive columns (umpires, method, id)
+---
 
-### 2. Feature Engineering
-| Feature | Description |
-|---------|-------------|
-| `team1_total_wins` | Historical total wins for team 1 |
-| `team2_total_wins` | Historical total wins for team 2 |
-| `team1_won_toss` | Whether team 1 won the toss (binary) |
-| `toss_decision_bat` | Whether toss winner chose to bat (binary) |
-| `team1_venue_win_rate` | Team 1's win rate at the specific venue |
-| `team2_venue_win_rate` | Team 2's win rate at the specific venue |
-| `team1_h2h_win_rate` | Team 1's head-to-head win rate vs team 2 |
+## ⚙️ Feature Engineering
 
-### 3. Model Training
-- **Logistic Regression** (selected as best)
-- **Random Forest Classifier** (200 trees, max_depth=8)
-- 5-fold cross-validation for model selection
+Ten features are computed from the cleaned dataset:
 
-## Results
+| Feature | Type | Description | Importance |
+|---|---|---|---|
+| `team1_total_wins` | Float | Team 1's all-time IPL win count — proxy for franchise strength | Very High |
+| `team2_total_wins` | Float | Team 2's all-time IPL win count | Very High |
+| `win_diff` | Float | `team1_total_wins − team2_total_wins` — net strength gap | High |
+| `team1_h2h_win_rate` | Float [0,1] | Team 1's historical win rate directly against Team 2 | High |
+| `team1_venue_win_rate` | Float [0,1] | Team 1's win % at the match venue | Medium |
+| `team2_venue_win_rate` | Float [0,1] | Team 2's win % at the match venue | Medium |
+| `venue_advantage_diff` | Float [-1,1] | Net venue win-rate advantage for Team 1 | Medium |
+| `team1_won_toss` | Binary {0,1} | Whether Team 1 won the toss | Low |
+| `toss_decision_bat` | Binary {0,1} | Whether the toss winner chose to bat | Low |
+| `season_number` | Integer | Ordinal season year — captures league maturity trends | Low |
 
-| Model | Test Accuracy | CV Accuracy |
-|-------|:------------:|:-----------:|
-| **Logistic Regression** | **81.19%** | **78.81%** |
-| Random Forest | 75.69% | 77.06% |
+---
 
-### Sample Predictions
+## 🧠 Model Architecture
 
-| Match | Venue | Predicted Winner | Win Probability |
-|-------|-------|:----------------:|:---------------:|
-| MI vs CSK | Wankhede Stadium | Mumbai Indians | ~60% |
-| KKR vs RCB | Eden Gardens | Kolkata Knight Riders | ~71% |
-| DC vs RR | Neutral | Rajasthan Royals | ~53% |
-| SRH vs PBKS | Neutral | Sunrisers Hyderabad | ~61% |
+The entire pipeline is wrapped in a Scikit-Learn `Pipeline` to prevent data leakage:
 
-## Project Structure
+```
+Data → StandardScaler → Logistic Regression (C=1.0, lbfgs solver)
+```
+
+Three models were evaluated:
+
+| Model | CV Accuracy | CV ROC-AUC | Test Accuracy | Test ROC-AUC |
+|---|:---:|:---:|:---:|:---:|
+| **Logistic Regression** ✅ | **78.84% ±2.1%** | **88.99% ±1.1%** | **79.63%** | **90.02%** |
+| Random Forest (300 trees) | 75.23% ±2.0% | 86.57% ±1.4% | — | — |
+| Gradient Boosting | 71.86% ±4.1% | 83.93% ±2.4% | — | — |
+
+**Winner: Logistic Regression** — Selected by highest mean CV ROC-AUC.
+
+> The dominance of Logistic Regression (a linear model) over tree ensembles indicates that the relationship between our engineered features and the outcome is largely **linear** in nature. Team strength differences, venue advantage, and head-to-head record combine additively — there is no strong interaction effect that trees would capture.
+
+---
+
+## 📈 Results
+
+### Confusion Matrix — Test Set (216 samples)
+
+```
+                 Predicted
+                T2 Wins   T1 Wins
+Actual T2 Wins [ TN=88    FP=18  ]
+Actual T1 Wins [ FN=26    TP=84  ]
+```
+
+### Classification Report
+
+```
+              precision  recall  f1-score  support
+Team 2 Wins      0.77    0.83      0.80      106
+Team 1 Wins      0.82    0.76      0.79      110
+
+accuracy                           0.80      216
+macro avg        0.80    0.80      0.80      216
+```
+
+---
+
+## 📁 Project Structure
 
 ```
 ipl-match-predictor/
 ├── data/
-│   ├── matches.csv          # IPL match data (2008-2024)
-│   └── deliveries.csv       # Ball-by-ball data (for future use)
+│   ├── matches.csv          # IPL match records (2008–2024), 1,095 rows × 20 cols
+│   └── deliveries.csv       # Ball-by-ball data (reserved for future player features)
+│
+├── models/
+│   └── best_ipl_pipeline.pkl  # Serialised fitted Scikit-Learn Pipeline (auto-generated)
+│
 ├── notebooks/
-│   ├── generate_eda_plots.py
-│   └── *.png                # EDA visualizations
+│   ├── generate_eda_plots.py  # EDA visualisation script
+│   ├── matches_per_season.png
+│   ├── total_wins_by_team.png
+│   ├── toss_decision_distribution.png
+│   ├── toss_effect.png
+│   ├── top_venues.png
+│   └── win_margins.png
+│
 ├── src/
-│   └── ipl_predictor.py     # Core ML pipeline
-└── README.md
+│   ├── ipl_predictor.py       # Original modular predictor (legacy)
+│   └── step7_upgrades.py      # Multi-class experiment (legacy)
+│
+├── train.py                   # ⭐ Main ML pipeline — run this
+├── TUTORIAL.md                # Step-by-step tutorial with engineering rationale
+├── README.md                  # This file
+└── .gitignore
 ```
 
-## How to Run
+---
+
+## 🚀 Installation & Execution
+
+### Prerequisites
+
+- Python 3.9 or higher
+- pip
+
+### Step 1 — Clone the repository
 
 ```bash
-# Install dependencies
-pip install pandas numpy matplotlib seaborn scikit-learn
+git clone https://github.com/<YOUR_USERNAME>/ipl-match-predictor.git
+cd ipl-match-predictor
+```
 
-# Run the full pipeline (clean → engineer → train → predict)
-python src/ipl_predictor.py
+### Step 2 — Install dependencies
 
-# Generate EDA visualizations
+```bash
+pip install pandas numpy scikit-learn joblib matplotlib seaborn
+```
+
+### Step 3 — Run the full ML pipeline
+
+```bash
+python train.py
+```
+
+This single command will:
+1. Load and clean `data/matches.csv`
+2. Engineer all 10 features
+3. Run 5-fold stratified cross-validation on 3 models
+4. Evaluate the best model on the held-out test set
+5. Save the fitted pipeline to `models/best_ipl_pipeline.pkl`
+6. Print live match predictions across all toss scenarios
+
+### Step 4 — (Optional) Generate EDA visualisations
+
+```bash
 python notebooks/generate_eda_plots.py
 ```
 
-## Tech Stack
+---
 
-- **Python 3.x**
-- **Pandas** — data manipulation & cleaning
-- **NumPy** — numerical operations
-- **Scikit-learn** — ML models, evaluation, cross-validation
-- **Matplotlib / Seaborn** — data visualizations
+## 🔮 Sample Predictions
 
-## Key Insights
+```
+Mumbai Indians vs Chennai Super Kings at Wankhede Stadium
+──────────────────────────────────────────────────────────
+Toss Winner     Toss Decision   MI Win%   CSK Win%   Winner
+Mumbai Indians  bat             ~61%      ~39%       Mumbai Indians
+Mumbai Indians  field           ~60%      ~40%       Mumbai Indians
+Chennai SC      bat             ~47%      ~53%       Chennai Super Kings
+Chennai SC      field           ~46%      ~54%       Chennai Super Kings
 
-- Winning the toss gives only a slight advantage (~51% win rate)
-- Venue performance and head-to-head record are strong predictors
-- Team historical strength (total wins) is the single most important feature
-- Logistic Regression outperformed Random Forest, suggesting linear separability in the feature space
+Kolkata Knight Riders vs Royal Challengers Bangalore at Eden Gardens
+─────────────────────────────────────────────────────────────────────
+Toss Winner     Toss Decision   KKR Win%  RCB Win%   Winner
+Kolkata KR      bat             ~70%      ~30%       Kolkata Knight Riders
+Kolkata KR      field           ~69%      ~31%       Kolkata Knight Riders
+```
 
-## Future Work
+---
 
-- Add player-level features (top batsmen/bowlers availability)
-- Incorporate deliveries.csv for deeper team performance metrics
-- Try gradient boosting (XGBoost / LightGBM)
-- Build a Streamlit web app for interactive predictions
-- Add recent form (last 5 match results) as a feature
+## 🛠 Technical Stack
 
-## Author
+| Tool | Version | Purpose |
+|---|---|---|
+| **Python** | 3.9+ | Core language |
+| **Pandas** | 2.x | Data loading, cleaning, feature engineering |
+| **NumPy** | 1.26+ | Numerical operations |
+| **Scikit-Learn** | 1.4+ | `Pipeline`, `StandardScaler`, `LogisticRegression`, `RandomForestClassifier`, `GradientBoostingClassifier`, cross-validation, metrics |
+| **joblib** | bundled | Model serialisation (`.pkl`) |
+| **Matplotlib** | 3.x | EDA plots |
+| **Seaborn** | 0.13+ | Styled EDA plots |
 
-Dilip
+---
 
-## License
+## 🔑 Key Insights
 
-KMIT
+1. **Team strength is king** — Historical win count (`team1_total_wins` / `team2_total_wins`) is the most predictive feature. Strong franchises (MI, CSK) win consistently.
+
+2. **Toss matters less than you think** — Toss-related features have the lowest feature importance. The probability swing from winning vs. losing the toss is less than 3 percentage points.
+
+3. **Head-to-head record is a meaningful signal** — Historical matchup data between two specific teams provides useful signal beyond overall team strength.
+
+4. **Venue advantage compounds** — Teams playing on their home ground (e.g., MI at Wankhede) show measurably better venue win rates.
+
+5. **The problem is linearly separable** — Logistic Regression outperforms both Random Forest and Gradient Boosting, confirming that feature interactions are weak and the signal is additive.
+
+---
+
+## 🔭 Future Work
+
+- [ ] **Player-level features** — Integrate `deliveries.csv` to compute per-match batting/bowling strength indexes
+- [ ] **Recent form** — Rolling win rate over last 5 matches for each team (removes stale data bias)
+- [ ] **Time-aware split** — Use a temporal train/test split (train on 2008-2022, test on 2023-2024) for truly fair evaluation
+- [ ] **XGBoost / LightGBM** — Test gradient boosting with tuned hyperparameters
+- [ ] **Calibration** — Apply `CalibratedClassifierCV` to produce better-calibrated win probabilities
+- [ ] **Streamlit App** — Interactive web interface for real-time match predictions
+
+---
+
+## 👤 Author
+
+**Dilip** — KMIT
+
+## 📄 License
+
+KMIT — for educational use.

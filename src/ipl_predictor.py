@@ -15,7 +15,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 import warnings
 import sys
@@ -58,13 +58,13 @@ def load_and_clean(path: str) -> pd.DataFrame:
     # 'winner' is NaN for no-result / tied matches → drop those rows
     df.dropna(subset=['winner'], inplace=True)
 
-    # fill remaining NaNs
+    # fill remaining NaNs (use assignment — inplace on chained ops is deprecated in pandas >=2.x)
     if 'city' in df.columns:
-        df['city'].fillna('Unknown', inplace=True)
+        df['city'] = df['city'].fillna('Unknown')
     if 'player_of_match' in df.columns:
-        df['player_of_match'].fillna('Unknown', inplace=True)
+        df['player_of_match'] = df['player_of_match'].fillna('Unknown')
     if 'result_margin' in df.columns:
-        df['result_margin'].fillna(0, inplace=True)
+        df['result_margin'] = df['result_margin'].fillna(0)
 
     # --- parse date ---
     df['date'] = pd.to_datetime(df['date'])
@@ -91,30 +91,42 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     df['toss_decision_bat'] = (df['toss_decision'] == 'bat').astype(int)
 
     # 4) Venue-level win rate for each team
+    # NOTE: pandas >=2.2 excludes groupby keys from the sub-group DataFrame
+    #       inside apply(), causing KeyError on 'team1'/'team2'.
+    #       Fix: pre-compute win flags as plain columns, then use groupby()[col].mean().
+    df['_t1_win'] = (df['winner'] == df['team1']).astype(float)
+    df['_t2_win'] = (df['winner'] == df['team2']).astype(float)
+
     venue_wins_t1 = (
-        df.groupby(['venue', 'team1'])
-        .apply(lambda g: (g['winner'] == g['team1']).mean())
-        .reset_index(name='team1_venue_win_rate')
+        df.groupby(['venue', 'team1'])['_t1_win']
+        .mean()
+        .reset_index()
+        .rename(columns={'_t1_win': 'team1_venue_win_rate'})
     )
     df = df.merge(venue_wins_t1, on=['venue', 'team1'], how='left')
-    df['team1_venue_win_rate'].fillna(0.5, inplace=True)
+    df['team1_venue_win_rate'] = df['team1_venue_win_rate'].fillna(0.5)
 
     venue_wins_t2 = (
-        df.groupby(['venue', 'team2'])
-        .apply(lambda g: (g['winner'] == g['team2']).mean())
-        .reset_index(name='team2_venue_win_rate')
+        df.groupby(['venue', 'team2'])['_t2_win']
+        .mean()
+        .reset_index()
+        .rename(columns={'_t2_win': 'team2_venue_win_rate'})
     )
     df = df.merge(venue_wins_t2, on=['venue', 'team2'], how='left')
-    df['team2_venue_win_rate'].fillna(0.5, inplace=True)
+    df['team2_venue_win_rate'] = df['team2_venue_win_rate'].fillna(0.5)
 
     # 5) Head-to-head win rate (team1 vs team2)
     h2h = (
-        df.groupby(['team1', 'team2'])
-        .apply(lambda g: (g['winner'] == g['team1']).mean())
-        .reset_index(name='team1_h2h_win_rate')
+        df.groupby(['team1', 'team2'])['_t1_win']
+        .mean()
+        .reset_index()
+        .rename(columns={'_t1_win': 'team1_h2h_win_rate'})
     )
     df = df.merge(h2h, on=['team1', 'team2'], how='left')
-    df['team1_h2h_win_rate'].fillna(0.5, inplace=True)
+    df['team1_h2h_win_rate'] = df['team1_h2h_win_rate'].fillna(0.5)
+
+    # Drop temporary helper columns
+    df.drop(columns=['_t1_win', '_t2_win'], inplace=True)
 
     # 6) Binary target: did team1 win?
     df['team1_win'] = (df['winner'] == df['team1']).astype(int)
