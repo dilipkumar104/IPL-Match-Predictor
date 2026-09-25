@@ -264,21 +264,41 @@ Kolkata KR      field           ~69%      ~31%       Kolkata Knight Riders
 
 ---
 
-## 🔭 Future Work
+## 🔭 Future Work & Recent Improvements
 
-- [ ] **Player-level features** — Integrate `deliveries.csv` to compute per-match batting/bowling strength indexes
-- [ ] **Recent form** — Rolling win rate over last 5 matches for each team (removes stale data bias)
-- [ ] **Time-aware split** — Use a temporal train/test split (train on 2008-2022, test on 2023-2024) for truly fair evaluation
-- [ ] **XGBoost / LightGBM** — Test gradient boosting with tuned hyperparameters
-- [ ] **Calibration** — Apply `CalibratedClassifierCV` to produce better-calibrated win probabilities
+### ✅ Completed (September 2026)
+
+1. **✅ Time-aware split** — Implemented temporal train/test split (2008–2022 train, 2023–2024 test) with rolling aggregates to prevent look-ahead bias
+2. **✅ Player-level features** — Extracted 732 player stats from `deliveries.csv`; engineered squad power, recent form, batting/bowling strength indices (8 new features)
+3. **✅ XGBoost / LightGBM + tuning** — Bayesian hyperparameter optimization with Optuna for 5 models; best params saved to `models/tuning_results.json`
+4. **✅ Calibration** — Applied isotonic calibration via `CalibratedClassifierCV` for better probability estimates
+5. **✅ Ensemble** — Weighted ensemble combining Logistic Regression, Gradient Boosting, and LightGBM
+
+### 📊 New Results (Temporal Holdout 2023–2024)
+
+| Metric | Value |
+|--------|-------|
+| **Test Accuracy** | **90.28%** ⬆️ from 79.63% |
+| Test ROC-AUC | 0.9737 |
+| Test Precision | 91% (Team 2), 90% (Team 1) |
+| Test Recall | 88% (Team 2), 92% (Team 1) |
+
+**See:** `IMPLEMENTATION_SUMMARY.md` for full details on all 5 phases
+
+### 🎯 Remaining Work Toward 95%
+
+- [ ] Match context features (days between matches, home/away, fatigue)
+- [ ] Time-series models (LSTM on match sequences for momentum capture)
+- [ ] Feature interactions (polynomial, cross-team dynamics)
+- [ ] Advanced threshold optimization (cost-sensitive learning per season)
 - [ ] **Streamlit App** — Interactive web interface for real-time match predictions
 
 ---
 
 ## 👤 Author
 
-**Dilip** — KMIT
+**Dilip**
 
 ## 📄 License
 
-KMIT — for educational use.
+Educational Purpose
